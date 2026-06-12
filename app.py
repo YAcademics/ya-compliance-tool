@@ -568,81 +568,124 @@ def verify_password(password: str, stored_hash: str, salt: str) -> bool:
 
 
 def init_db():
-    """Initializes schema and runs safe backward-compatible dynamic column migrations."""
+    """Initializes schema and safely repairs/migrates the local SQLite database.
+
+    This is deliberately defensive because Streamlit Cloud can keep an older
+    compliance_history.sqlite3 file after the Python script changes. CREATE TABLE
+    IF NOT EXISTS will not add missing columns to an existing table, so uploads
+    can fail later when INSERT tries to write to columns that are not present.
+    """
     con = sqlite3.connect(DB_PATH)
     cur = con.cursor()
 
-    # Base users lookup table
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        email TEXT PRIMARY KEY,
-        password_hash TEXT NOT NULL,
-        salt TEXT NOT NULL,
-        role TEXT NOT NULL,
-        active INTEGER DEFAULT 1,
-        created_at TEXT,
-        updated_at TEXT,
-        created_by TEXT
-    )
-    """)
+    def ensure_table(table_name: str, create_sql: str, required_columns: Dict[str, str]):
+        cur.execute(create_sql)
+        cur.execute(f"PRAGMA table_info({table_name})")
+        existing = {row[1] for row in cur.fetchall()}
+        for col_name, col_type in required_columns.items():
+            if col_name not in existing:
+                cur.execute(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}")
 
-    # Compliance history tracks details safely
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS compliance_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        run_id TEXT,
-        filename TEXT,
-        file_hash TEXT,
-        provider TEXT,
-        service_id TEXT,
-        service_name TEXT,
-        date TEXT,
-        law TEXT,
-        regulation TEXT,
-        nature_of_breach TEXT,
-        action_required TEXT,
-        status TEXT,
-        quarter TEXT,
-        calendar_year INTEGER
+    ensure_table(
+        "users",
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            email TEXT PRIMARY KEY,
+            password_hash TEXT NOT NULL,
+            salt TEXT NOT NULL,
+            role TEXT NOT NULL,
+            active INTEGER DEFAULT 1,
+            created_at TEXT,
+            updated_at TEXT,
+            created_by TEXT
+        )
+        """,
+        {
+            "password_hash": "TEXT",
+            "salt": "TEXT",
+            "role": "TEXT",
+            "active": "INTEGER DEFAULT 1",
+            "created_at": "TEXT",
+            "updated_at": "TEXT",
+            "created_by": "TEXT",
+        },
     )
-    """)
 
-    # Audit engine logging
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS audit_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TEXT,
-        user_email TEXT,
-        role TEXT,
-        action TEXT,
-        detail TEXT
+    ensure_table(
+        "compliance_history",
+        """
+        CREATE TABLE IF NOT EXISTS compliance_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT,
+            filename TEXT,
+            file_hash TEXT,
+            provider TEXT,
+            service_id TEXT,
+            service_name TEXT,
+            date TEXT,
+            law TEXT,
+            regulation TEXT,
+            nature_of_breach TEXT,
+            action_required TEXT,
+            status TEXT,
+            quarter TEXT,
+            calendar_year INTEGER
+        )
+        """,
+        {
+            "run_id": "TEXT",
+            "filename": "TEXT",
+            "file_hash": "TEXT",
+            "provider": "TEXT",
+            "service_id": "TEXT",
+            "service_name": "TEXT",
+            "date": "TEXT",
+            "law": "TEXT",
+            "regulation": "TEXT",
+            "nature_of_breach": "TEXT",
+            "action_required": "TEXT",
+            "status": "TEXT",
+            "quarter": "TEXT",
+            "calendar_year": "INTEGER",
+        },
     )
-    """)
 
-    # Normalization context rules
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS provider_mapping (
-        raw_string TEXT PRIMARY KEY,
-        clean_provider TEXT
+    ensure_table(
+        "audit_logs",
+        """
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            user_email TEXT,
+            role TEXT,
+            action TEXT,
+            detail TEXT
+        )
+        """,
+        {
+            "timestamp": "TEXT",
+            "user_email": "TEXT",
+            "role": "TEXT",
+            "action": "TEXT",
+            "detail": "TEXT",
+        },
     )
-    """)
+
+    ensure_table(
+        "provider_mapping",
+        """
+        CREATE TABLE IF NOT EXISTS provider_mapping (
+            raw_string TEXT PRIMARY KEY,
+            clean_provider TEXT
+        )
+        """,
+        {
+            "clean_provider": "TEXT",
+        },
+    )
 
     con.commit()
-
-    # Core Auto-Migration for dynamically introduced Quarter Chips dimensions
-    try:
-        cur.execute("PRAGMA table_info(compliance_history)")
-        columns = [col[1] for col in cur.fetchall()]
-        if "quarter" not in columns:
-            cur.execute("ALTER TABLE compliance_history ADD COLUMN quarter TEXT;")
-        if "calendar_year" not in columns:
-            cur.execute("ALTER TABLE compliance_history ADD COLUMN calendar_year INTEGER;")
-        con.commit()
-    except Exception:
-        pass
-
     con.close()
-
 
 def ensure_default_users():
     """Creates the initial admin users if they do not already exist."""
@@ -736,39 +779,65 @@ def load_history() -> Tuple[pd.DataFrame, pd.DataFrame, List[dict]]:
 
 
 def save_to_db(run_id: str, filename: str, file_hash: str, df: pd.DataFrame):
-    """Saves records safely, ignoring transient front-end filter tracking artifacts if necessary."""
+    """Save parsed upload rows to SQLite without relying on pandas.to_sql.
+
+    This avoids the Streamlit redacted pandas.errors.DatabaseError path and also
+    forces the database schema to be repaired before every write.
+    """
+    init_db()
+
+    if df is None or df.empty:
+        return
+
     con = sqlite3.connect(DB_PATH)
     cur = con.cursor()
-
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    for _, row in df.iterrows():
-        # Extrapolate periods securely or extract defaults
-        q_val = str(row.get('quarter', 'Q1')) if 'quarter' in row else 'Q1'
-        y_val = int(row.get('calendar_year', 2026)) if 'calendar_year' in row else 2026
+    insert_sql = """
+        INSERT INTO compliance_history (
+            run_id, filename, file_hash, provider, service_id, service_name,
+            date, law, regulation, nature_of_breach, action_required, status,
+            quarter, calendar_year
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """
 
-        cur.execute("""
-            INSERT INTO compliance_history (
-                run_id, filename, file_hash, provider, service_id, service_name, 
-                date, law, regulation, nature_of_breach, action_required, status, 
-                quarter, calendar_year
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            run_id, filename, file_hash,
-            str(row.get('provider', 'Unknown')),
-            str(row.get('service_id', '')),
-            str(row.get('service_name', '')),
-            str(row.get('date', now_str)),
-            str(row.get('law', '')),
-            str(row.get('regulation', '')),
-            str(row.get('nature_of_breach', '')),
-            str(row.get('action_required', '')),
-            str(row.get('status', 'Open')),
-            q_val, y_val
-        ))
-    con.commit()
-    con.close()
+    try:
+        for _, row in df.iterrows():
+            q_val = str(row.get("quarter", "Q1") or "Q1").strip() or "Q1"
 
+            raw_year = row.get("calendar_year", 2026)
+            try:
+                parsed_year = pd.to_numeric(raw_year, errors="coerce")
+                y_val = 2026 if pd.isna(parsed_year) else int(parsed_year)
+            except Exception:
+                y_val = 2026
+
+            cur.execute(
+                insert_sql,
+                (
+                    str(run_id or ""),
+                    str(filename or ""),
+                    str(file_hash or ""),
+                    str(row.get("provider", "Unknown") or "Unknown"),
+                    str(row.get("service_id", "") or ""),
+                    str(row.get("service_name", "") or ""),
+                    str(row.get("date", now_str) or now_str),
+                    str(row.get("law", "") or ""),
+                    str(row.get("regulation", "") or ""),
+                    str(row.get("nature_of_breach", "") or ""),
+                    str(row.get("action_required", "") or ""),
+                    str(row.get("status", "Open") or "Open"),
+                    q_val,
+                    y_val,
+                ),
+            )
+
+        con.commit()
+    except Exception:
+        con.rollback()
+        raise
+    finally:
+        con.close()
 
 def render_login_screen():
     st.markdown(f"""
