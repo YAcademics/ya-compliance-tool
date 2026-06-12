@@ -27,52 +27,14 @@ SIGNIFICANT_LAWS = {"165", "166", "167"}
 
 
 def show_soft_loading(message="Please wait. Updating..."):
-    """Show a blocking YA-styled loading overlay before a Streamlit rerun/action."""
+    """Show a non-blocking YA-styled status message before a Streamlit rerun/action.
+
+    Important: this deliberately does NOT use a fixed full-screen overlay.
+    A fixed overlay can remain visible while Streamlit is processing and make the
+    app look frozen/hung during uploads.
+    """
     st.markdown("""
     <style>
-      .ya-loading-overlay {
-        position: fixed;
-        inset: 0;
-        z-index: 999999;
-        background: rgba(47, 126, 132, 0.72);
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .ya-loading-box {
-        width: min(440px, calc(100vw - 48px));
-        border-radius: 28px;
-        padding: 32px 34px;
-        background: rgba(255,255,255,0.88);
-        border: 1px solid rgba(255,255,255,0.70);
-        box-shadow: 0 28px 80px rgba(0,0,0,0.24);
-        text-align: center;
-        color: #004f57;
-      }
-      .ya-loading-spinner {
-        width: 48px;
-        height: 48px;
-        margin: 0 auto 18px;
-        border-radius: 50%;
-        border: 5px solid rgba(0,79,87,0.18);
-        border-top-color: #60d6cf;
-        animation: ya-spin 0.85s linear infinite;
-      }
-      .ya-loading-title {
-        font-size: 22px;
-        font-weight: 900;
-        letter-spacing: -0.02em;
-        margin-bottom: 8px;
-      }
-      .ya-loading-subtitle {
-        font-size: 13px;
-        color: rgba(0,79,87,0.72);
-        font-weight: 700;
-      }
-      @keyframes ya-spin { to { transform: rotate(360deg); } }
-
       .ya-success-panel {
         background: rgba(255,255,255,.92);
         border: 1px solid rgba(255,255,255,.72);
@@ -121,16 +83,8 @@ def show_soft_loading(message="Please wait. Updating..."):
     """, unsafe_allow_html=True)
 
     safe_message = str(message).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    st.markdown(f"""
-    <div class="ya-loading-overlay">
-      <div class="ya-loading-box">
-        <div class="ya-loading-spinner"></div>
-        <div class="ya-loading-title">{safe_message}</div>
-        <div class="ya-loading-subtitle">Please do not click away while the app updates.</div>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-    time.sleep(0.35)
+    st.info(safe_message)
+    time.sleep(0.05)
 
 
 DEFAULT_PROVIDER_RULES = [
