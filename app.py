@@ -916,7 +916,7 @@ def _append_dataframe(con, table_name: str, df: pd.DataFrame):
         if col not in frame.columns:
             frame[col] = None
     frame = frame[table_cols]
-    frame = frame.applymap(_sqlite_safe_value)
+    frame = frame.map(_sqlite_safe_value)
     frame.to_sql(table_name, con, if_exists="append", index=False)
 
 
@@ -930,7 +930,7 @@ def _upsert_reports(con, report_meta: pd.DataFrame):
     for col in table_cols:
         if col not in frame.columns:
             frame[col] = None
-    frame = frame[table_cols].applymap(_sqlite_safe_value)
+    frame = frame[table_cols].map(_sqlite_safe_value)
 
     quoted_cols = ",".join([f'"{c}"' for c in table_cols])
     placeholders = ",".join(["?"] * len(table_cols))
