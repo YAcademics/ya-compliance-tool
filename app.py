@@ -28,16 +28,9 @@ SIGNIFICANT_LAWS = {"165", "166", "167"}
 
 def show_soft_loading(message="Please wait. Updating..."):
     """Show a blocking YA-styled loading overlay before a Streamlit rerun/action."""
-    st.markdown(f"""
-    <div class="ya-loading-overlay">
-      <div class="ya-loading-box">
-        <div class="ya-loading-spinner"></div>
-        <div class="ya-loading-title">{message}</div>
-        <div class="ya-loading-subtitle">Please do not click away while the app updates.</div>
-      </div>
-    </div>
+    st.markdown("""
     <style>
-      .ya-loading-overlay {{
+      .ya-loading-overlay {
         position: fixed;
         inset: 0;
         z-index: 999999;
@@ -47,8 +40,8 @@ def show_soft_loading(message="Please wait. Updating..."):
         display: flex;
         align-items: center;
         justify-content: center;
-      }}
-      .ya-loading-box {{
+      }
+      .ya-loading-box {
         width: min(440px, calc(100vw - 48px));
         border-radius: 28px;
         padding: 32px 34px;
@@ -57,8 +50,8 @@ def show_soft_loading(message="Please wait. Updating..."):
         box-shadow: 0 28px 80px rgba(0,0,0,0.24);
         text-align: center;
         color: #004f57;
-      }}
-      .ya-loading-spinner {{
+      }
+      .ya-loading-spinner {
         width: 48px;
         height: 48px;
         margin: 0 auto 18px;
@@ -66,27 +59,79 @@ def show_soft_loading(message="Please wait. Updating..."):
         border: 5px solid rgba(0,79,87,0.18);
         border-top-color: #60d6cf;
         animation: ya-spin 0.85s linear infinite;
-      }}
-      .ya-loading-title {{
+      }
+      .ya-loading-title {
         font-size: 22px;
         font-weight: 900;
         letter-spacing: -0.02em;
         margin-bottom: 8px;
-      }}
-      .ya-loading-subtitle {{
+      }
+      .ya-loading-subtitle {
         font-size: 13px;
         color: rgba(0,79,87,0.72);
         font-weight: 700;
-      }}
-      @keyframes ya-spin {{ to {{ transform: rotate(360deg); }} }}
-    
-.ya-success-panel{background:rgba(255,255,255,.92);border:1px solid rgba(255,255,255,.72);box-shadow:0 22px 60px rgba(0,0,0,.18);border-radius:26px;padding:24px 28px;margin:18px 0 24px;color:#004f57}
-.ya-success-title{font-size:24px;font-weight:950;margin-bottom:16px}
-.ya-success-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.ya-success-grid div{background:#eaf6f8;border-radius:18px;padding:16px;font-weight:800;color:#004f57}
-.ya-duplicate-panel{background:rgba(255,248,216,.96);border:2px solid #f1c232;box-shadow:0 18px 48px rgba(0,0,0,.14);border-radius:24px;padding:20px 24px;margin:18px 0;color:#3d3300}.ya-duplicate-panel h3{margin:0 0 8px;font-size:22px}.ya-duplicate-list{margin:10px 0 0 0;padding-left:18px;font-weight:800}
-</style>
+      }
+      @keyframes ya-spin { to { transform: rotate(360deg); } }
+
+      .ya-success-panel {
+        background: rgba(255,255,255,.92);
+        border: 1px solid rgba(255,255,255,.72);
+        box-shadow: 0 22px 60px rgba(0,0,0,.18);
+        border-radius: 26px;
+        padding: 24px 28px;
+        margin: 18px 0 24px;
+        color: #004f57;
+      }
+      .ya-success-title {
+        font-size: 24px;
+        font-weight: 950;
+        margin-bottom: 16px;
+      }
+      .ya-success-grid {
+        display: grid;
+        grid-template-columns: repeat(4,minmax(0,1fr));
+        gap: 12px;
+      }
+      .ya-success-grid div {
+        background: #eaf6f8;
+        border-radius: 18px;
+        padding: 16px;
+        font-weight: 800;
+        color: #004f57;
+      }
+      .ya-duplicate-panel {
+        background: rgba(255,248,216,.96);
+        border: 2px solid #f1c232;
+        box-shadow: 0 18px 48px rgba(0,0,0,.14);
+        border-radius: 24px;
+        padding: 20px 24px;
+        margin: 18px 0;
+        color: #3d3300;
+      }
+      .ya-duplicate-panel h3 {
+        margin: 0 0 8px;
+        font-size: 22px;
+      }
+      .ya-duplicate-list {
+        margin: 10px 0 0 0;
+        padding-left: 18px;
+        font-weight: 800;
+      }
+    </style>
+    """, unsafe_allow_html=True)
+
+    safe_message = str(message).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    st.markdown(f"""
+    <div class="ya-loading-overlay">
+      <div class="ya-loading-box">
+        <div class="ya-loading-spinner"></div>
+        <div class="ya-loading-title">{safe_message}</div>
+        <div class="ya-loading-subtitle">Please do not click away while the app updates.</div>
+      </div>
+    </div>
     """, unsafe_allow_html=True)
     time.sleep(0.35)
+
 
 DEFAULT_PROVIDER_RULES = [
     ("Young Academics", ["young academics"]),
